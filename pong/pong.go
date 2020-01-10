@@ -2,16 +2,86 @@ package main
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/veandco/go-sdl2/sdl"
 )
 
 const winWidth, winHeight int = 800, 600
 
+// Number Score
+var nums = [][]byte{
+	{
+		1, 1, 1,
+		1, 0, 1,
+		1, 0, 1,
+		1, 0, 1,
+		1, 1, 1,
+	},
+	{
+		1, 1, 0,
+		0, 1, 0,
+		0, 1, 0,
+		0, 1, 0,
+		1, 1, 1,
+	},
+	{
+		1, 1, 1,
+		0, 0, 1,
+		1, 1, 1,
+		1, 0, 0,
+		1, 1, 1,
+	},
+	{
+		1, 1, 1,
+		0, 0, 1,
+		1, 1, 1,
+		0, 0, 1,
+		1, 1, 1,
+	},
+	{
+		1, 0, 1,
+		1, 0, 1,
+		1, 1, 1,
+		0, 0, 1,
+		0, 0, 1,
+	},
+	{
+		1, 1, 1,
+		1, 0, 0,
+		1, 1, 1,
+		0, 0, 1,
+		1, 1, 1,
+	},
+}
+
+func drawNum(pos pos, color color, size int, number int, pixels []byte) {
+	startX := int(pos.x) - (size*3)/2
+	startY := int(pos.y) - (size*5)/2
+
+	for i, v := range nums[number] {
+		if v == 1 {
+			for y := startY; y < startY+size; y++ {
+				for x := startX; x < startX+size; x++ {
+					setPixel(x, y, color, pixels)
+				}
+			}
+		}
+		startX += size
+		if (i+1)%3 == 0 {
+			startY += size
+			startX -= size * 3
+		}
+	}
+}
 func clear(pixles []byte) {
 	for i := range pixles {
 		pixles[i] = 0
 	}
+}
+
+func lerp(a, b, pct float32) float32 {
+	return a + pct*(b-a)
 }
 
 type color struct {
@@ -37,17 +107,22 @@ func (ball *ball) draw(pixels []byte) {
 		}
 	}
 }
-
-func (ball *ball) update(leftPad *paddle, rightPad *paddle) {
-	ball.x += ball.xv
-	ball.y += ball.yv
+func getCenter() pos {
+	return pos{float32(winWidth) / 2, float32(winHeight) / 2}
+}
+func (ball *ball) update(leftPad *paddle, rightPad *paddle, elapsedTime float32) {
+	ball.x += ball.xv * elapsedTime
+	ball.y += ball.yv * elapsedTime
 	// Handle collisions
 	if ball.y-float32(ball.radius) < 0 || ball.y+float32(ball.radius) > float32(winHeight) {
 		ball.yv = -ball.yv
 	}
-	if ball.x < 0 || ball.x > float32(winWidth) {
-		ball.x = 300
-		ball.y = 300
+	if ball.x < 0 {
+		rightPad.score++
+		ball.pos = getCenter()
+	} else if ball.x > float32(winWidth) {
+		leftPad.score++
+		ball.pos = getCenter()
 	}
 	// Ball hits the edhe of left paddle
 	if ball.x < float32(leftPad.x)+float32(rightPad.w/2) {
@@ -66,7 +141,9 @@ type paddle struct {
 	pos
 	w     int
 	h     int
+	speed float32
 	color color
+	score int
 }
 
 func (paddle *paddle) draw(pixels []byte) {
@@ -78,22 +155,25 @@ func (paddle *paddle) draw(pixels []byte) {
 			setPixel(startx+x, starty+y, paddle.color, pixels)
 		}
 	}
+
+	numX := lerp(paddle.x, getCenter().x, .2)
+	drawNum(pos{numX, 35}, paddle.color, 10, paddle.score, pixels)
+
 }
-func (paddle *paddle) update(keyState []uint8) {
+func (paddle *paddle) update(keyState []uint8, elapsedTime float32) {
 	if keyState[sdl.SCANCODE_UP] != 0 {
-		paddle.y -= 10
+		paddle.y -= paddle.speed * elapsedTime
 	} else if keyState[sdl.SCANCODE_DOWN] != 0 {
-		paddle.y += 10
+		paddle.y += paddle.speed * elapsedTime
 	}
 
 }
-func (paddle *paddle) updateP2(keyState []uint8) {
-	if keyState[sdl.SCANCODE_A] != 0 {
-		paddle.y -= 10
-	} else if keyState[sdl.SCANCODE_Q] != 0 {
-		paddle.y += 10
+func (paddle *paddle) updateP2(keyState []uint8, elapsedTime float32) {
+	if keyState[sdl.SCANCODE_Q] != 0 {
+		paddle.y -= paddle.speed * elapsedTime
+	} else if keyState[sdl.SCANCODE_A] != 0 {
+		paddle.y += paddle.speed * elapsedTime
 	}
-
 }
 func setPixel(x, y int, c color, pixles []byte) {
 	index := (y*winWidth + x) * 4
@@ -135,11 +215,15 @@ func main() {
 
 	pixels := make([]byte, winWidth*winHeight*4)
 
-	player1 := paddle{pos{100, 100}, 20, 100, color{255, 255, 255}}
-	player2 := paddle{pos{700, 100}, 20, 100, color{255, 255, 255}}
-	ball := ball{pos{300, 300}, 20, 3, 3, color{255, 255, 255}}
+	player1 := paddle{pos{100, 100}, 20, 100, 300, color{255, 255, 255}, 0}
+	player2 := paddle{pos{700, 100}, 20, 100, 300, color{255, 255, 255}, 0}
+	ball := ball{pos{300, 300}, 20, 400, 400, color{255, 255, 255}}
 	keyState := sdl.GetKeyboardState()
+	var frameStart time.Time
+	var elapsedTime float32
+	elapsedTime = 1
 	for {
+		frameStart = time.Now()
 		for event := sdl.PollEvent(); event != nil; event = sdl.PollEvent() {
 			switch event.(type) {
 			case *sdl.QuitEvent:
@@ -147,9 +231,9 @@ func main() {
 			}
 		}
 		clear(pixels)
-		player1.update(keyState)
-		player2.updateP2(keyState)
-		ball.update(&player1, &player2)
+		player1.update(keyState, elapsedTime)
+		player2.updateP2(keyState, elapsedTime)
+		ball.update(&player1, &player2, elapsedTime)
 		player1.draw(pixels)
 		player2.draw(pixels)
 		ball.draw(pixels)
@@ -158,6 +242,11 @@ func main() {
 		tex.Update(nil, pixels, winWidth*4)
 		renderer.Copy(tex, nil, nil)
 		renderer.Present()
-		sdl.Delay(16)
+
+		elapsedTime = float32(time.Since(frameStart).Seconds())
+		if elapsedTime < .005 {
+			sdl.Delay(5 - uint32(elapsedTime/1000))
+			elapsedTime = float32(time.Since(frameStart).Seconds())
+		}
 	}
 }
