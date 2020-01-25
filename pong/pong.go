@@ -9,6 +9,17 @@ import (
 
 const winWidth, winHeight int = 800, 600
 
+//--Enum
+type gameState int
+
+const (
+	start gameState = iota
+	play
+)
+
+var state = start
+
+//--
 // Number Score
 var nums = [][]byte{
 	{
@@ -120,17 +131,19 @@ func (ball *ball) update(leftPad *paddle, rightPad *paddle, elapsedTime float32)
 	if ball.x < 0 {
 		rightPad.score++
 		ball.pos = getCenter()
+		state = start
 	} else if ball.x > float32(winWidth) {
 		leftPad.score++
 		ball.pos = getCenter()
+		state = start
 	}
 	// Ball hits the edhe of left paddle
-	if ball.x < float32(leftPad.x)+float32(rightPad.w/2) {
+	if int(ball.x)-ball.radius < int(leftPad.x)+int(rightPad.w/2) {
 		if ball.y > leftPad.y-float32(leftPad.h/2) && ball.y < leftPad.y+float32(leftPad.h/2) {
 			ball.xv = -ball.xv
 		}
 	}
-	if int(ball.x) > int(rightPad.x)-int(rightPad.w/2) {
+	if int(ball.x)+ball.radius > int(rightPad.x)-int(rightPad.w/2) {
 		if ball.y > rightPad.y-float32(rightPad.h/2) && ball.y < rightPad.y+float32(rightPad.h/2) {
 			ball.xv = -ball.xv
 		}
@@ -230,10 +243,21 @@ func main() {
 				return
 			}
 		}
+		if state == play {
+			player1.update(keyState, elapsedTime)
+			player2.updateP2(keyState, elapsedTime)
+			ball.update(&player1, &player2, elapsedTime)
+		} else if state == start {
+			if keyState[sdl.SCANCODE_SPACE] != 0 {
+				if player1.score == 3 || player2.score == 3 {
+					player1.score = 0
+					player2.score = 0
+				}
+				state = play
+
+			}
+		}
 		clear(pixels)
-		player1.update(keyState, elapsedTime)
-		player2.updateP2(keyState, elapsedTime)
-		ball.update(&player1, &player2, elapsedTime)
 		player1.draw(pixels)
 		player2.draw(pixels)
 		ball.draw(pixels)
